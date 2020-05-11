@@ -96,6 +96,7 @@ object ProjectionBehaviorSpec {
         stopFut
       }
     }
+
   }
 }
 class ProjectionBehaviorSpec extends ScalaTestWithActorTestKit with AnyWordSpecLike with LogCapturing {

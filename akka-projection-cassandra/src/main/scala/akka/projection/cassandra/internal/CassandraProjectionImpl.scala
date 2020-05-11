@@ -64,6 +64,9 @@ import akka.stream.scaladsl.Source
         case other => other
       }
     }
+
+    override def stop(): Future[Done] = delegate.stop()
+
   }
 }
 

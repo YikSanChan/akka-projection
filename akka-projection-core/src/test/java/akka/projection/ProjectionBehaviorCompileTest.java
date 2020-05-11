@@ -49,5 +49,6 @@ public class ProjectionBehaviorCompileTest {
             // no need for ProjectionSettings in tests
             return this;
         }
+
     }
 }
