@@ -36,6 +36,7 @@ import akka.projection.scaladsl.SourceProvider
 import akka.projection.testkit.scaladsl.ProjectionTestKit
 import akka.stream.alpakka.cassandra.scaladsl.CassandraSession
 import akka.stream.alpakka.cassandra.scaladsl.CassandraSessionRegistry
+import akka.stream.scaladsl.Flow
 import akka.stream.scaladsl.Source
 import akka.stream.testkit.TestPublisher
 import akka.stream.testkit.TestSubscriber
@@ -555,6 +556,39 @@ class CassandraProjectionSpec
             groupAfterEnvelopes = 3,
             groupAfterDuration = 1.minute,
             groupedHandler)
+
+      projectionTestKit.run(projection) {
+        withClue("check - all values were concatenated") {
+          val concatStr = repository.findById(entityId).futureValue.get
+          concatStr.text shouldBe "abc|def|ghi|jkl|mno|pqr"
+        }
+      }
+      withClue("check - all offsets were seen") {
+        val offset = offsetStore.readOffset[Long](projectionId).futureValue.get
+        offset shouldBe 6L
+      }
+    }
+  }
+
+  "A Cassandra flow projection" must {
+
+    "persist projection and offset" in {
+      val entityId = UUID.randomUUID().toString
+      val projectionId = genRandomProjectionId()
+
+      val flowHandler =
+        Flow[Envelope].throttle(1, 50.millis).mapAsync(1) { env =>
+          repository.concatToText(env.id, env.message).map(_ => env)
+        }
+
+      val projection =
+        CassandraProjection
+          .atLeastOnceFlow[Long, Envelope](
+            projectionId,
+            sourceProvider(system, entityId),
+            saveOffsetAfterEnvelopes = 2,
+            saveOffsetAfterDuration = 1.minute,
+            flowHandler)
 
       projectionTestKit.run(projection) {
         withClue("check - all values were concatenated") {

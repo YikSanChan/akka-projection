@@ -18,6 +18,7 @@ import akka.projection.cassandra.internal.CassandraProjectionImpl
 import akka.projection.scaladsl.GroupedHandler
 import akka.projection.scaladsl.Handler
 import akka.projection.scaladsl.SourceProvider
+import akka.stream.scaladsl.Flow
 
 /**
  * Factories of [[Projection]] where the offset is stored in Cassandra. The envelope handler can
@@ -31,7 +32,7 @@ import akka.projection.scaladsl.SourceProvider
 @ApiMayChange
 object CassandraProjection {
   import CassandraProjectionImpl.{ AtLeastOnce, AtMostOnce }
-  import CassandraProjectionImpl.{ GroupedHandlerStrategy, SingleHandlerStrategy }
+  import CassandraProjectionImpl.{ FlowHandlerStrategy, GroupedHandlerStrategy, SingleHandlerStrategy }
 
   /**
    * Create a [[Projection]] with at-least-once processing semantics. It stores the offset in Cassandra
@@ -69,6 +70,36 @@ object CassandraProjection {
       settingsOpt = None,
       offsetStrategy = AtLeastOnce(1, Duration.Zero),
       handlerStrategy = GroupedHandlerStrategy(handler, groupAfterEnvelopes, groupAfterDuration))
+
+  /**
+   * Create a [[Projection]] with a [[Flow]] as the envelope handler. It has at-least-once processing semantics.
+   * The `Flow` should emit the same envelopes as it receives. The offsets in the emitted envelopes are stored
+   * in Cassandra. Since the offset is stored after processing the envelope it means that if the
+   * projection is restarted from previously stored offset some envelopes may be processed more than once.
+   *
+   * If the `Flow` filters out envelopes the corresponding offset will not be stored, and such envelope
+   * will be processed again if the projection is restarted and no later offset was stored.
+   *
+   * The `Flow` should not duplicate emitted envelopes (`mapConcat`) with same offset, because then it can result in
+   * that the first offset is stored and when the projection is restarted that offset is considered completed even
+   * though more of the duplicated enveloped were never processed.
+   *
+   * The `Flow` must not reorder elements, because the offsets may be stored in the wrong order and
+   * and when the projection is restarted all envelopes up to the latest stored offset are considered
+   * completed event though some of them may not have been processed.
+   */
+  def atLeastOnceFlow[Offset, Envelope](
+      projectionId: ProjectionId,
+      sourceProvider: SourceProvider[Offset, Envelope],
+      saveOffsetAfterEnvelopes: Int,
+      saveOffsetAfterDuration: FiniteDuration,
+      handler: Flow[Envelope, Envelope, _]): Projection[Envelope] =
+    new CassandraProjectionImpl(
+      projectionId,
+      sourceProvider,
+      settingsOpt = None,
+      offsetStrategy = AtLeastOnce(saveOffsetAfterEnvelopes, saveOffsetAfterDuration),
+      handlerStrategy = FlowHandlerStrategy(handler))
 
   /**
    * Create a [[Projection]] with at-most-once processing semantics. It stores the offset in Cassandra

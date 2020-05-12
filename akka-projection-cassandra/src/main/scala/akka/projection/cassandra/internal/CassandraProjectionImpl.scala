@@ -56,6 +56,11 @@ import akka.stream.scaladsl.Source
       extends HandlerStrategy[Envelope] {
     override def lifecycle: HandlerLifecycle = handler
   }
+  final case class FlowHandlerStrategy[Envelope](handler: Flow[Envelope, Envelope, _])
+      extends HandlerStrategy[Envelope]
+      with HandlerLifecycle {
+    override def lifecycle: HandlerLifecycle = this // no lifecycle hooks for a Flow
+  }
 
   import HandlerRecoveryStrategy.Internal._
 
@@ -191,6 +196,11 @@ import akka.stream.scaladsl.Source
                   () => single.handler.process(envelope))
                   .map(_ => offset)
             }
+          case flow: FlowHandlerStrategy[Envelope] =>
+            Flow[(Offset, Envelope)]
+              .map { case (_, envelope) => envelope }
+              .via(flow.handler)
+              .map(sourceProvider.extractOffset)
         }
 
       val composedSource: Source[Done, NotUsed] = offsetStrategy match {
