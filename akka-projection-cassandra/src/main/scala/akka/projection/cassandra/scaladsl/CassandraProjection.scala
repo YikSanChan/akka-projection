@@ -4,6 +4,7 @@
 
 package akka.projection.cassandra.scaladsl
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
@@ -14,6 +15,7 @@ import akka.projection.Projection
 import akka.projection.ProjectionId
 import akka.projection.ProjectionSettings
 import akka.projection.cassandra.internal.CassandraProjectionImpl
+import akka.projection.scaladsl.GroupedHandler
 import akka.projection.scaladsl.Handler
 import akka.projection.scaladsl.SourceProvider
 
@@ -28,11 +30,13 @@ import akka.projection.scaladsl.SourceProvider
  */
 @ApiMayChange
 object CassandraProjection {
+  import CassandraProjectionImpl.{ AtLeastOnce, AtMostOnce }
+  import CassandraProjectionImpl.{ GroupedHandlerStrategy, SingleHandlerStrategy }
 
   /**
    * Create a [[Projection]] with at-least-once processing semantics. It stores the offset in Cassandra
    * after the `handler` has processed the envelope. This means that if the projection is restarted
-   * from previously stored offset some elements may be processed more than once.
+   * from previously stored offset some envelopes may be processed more than once.
    */
   def atLeastOnce[Offset, Envelope](
       projectionId: ProjectionId,
@@ -43,14 +47,33 @@ object CassandraProjection {
     new CassandraProjectionImpl(
       projectionId,
       sourceProvider,
-      CassandraProjectionImpl.AtLeastOnce(saveOffsetAfterEnvelopes, saveOffsetAfterDuration),
       settingsOpt = None,
-      handler)
+      offsetStrategy = AtLeastOnce(saveOffsetAfterEnvelopes, saveOffsetAfterDuration),
+      handlerStrategy = SingleHandlerStrategy(handler))
+
+  /**
+   * Create a [[Projection]] that groups envelopes and calls the `handler` with a group of `Envelopes`.
+   * It stores the offset in Cassandra immediately after the `handler` has processed the envelopes, but that
+   * is still with at-least-once processing semantics. This means that if the projection is restarted
+   * from previously stored offset the previous group of envelopes may be processed more than once.
+   */
+  def grouped[Offset, Envelope](
+      projectionId: ProjectionId,
+      sourceProvider: SourceProvider[Offset, Envelope],
+      groupAfterEnvelopes: Int,
+      groupAfterDuration: FiniteDuration,
+      handler: GroupedHandler[Envelope]): Projection[Envelope] =
+    new CassandraProjectionImpl(
+      projectionId,
+      sourceProvider,
+      settingsOpt = None,
+      offsetStrategy = AtLeastOnce(1, Duration.Zero),
+      handlerStrategy = GroupedHandlerStrategy(handler, groupAfterEnvelopes, groupAfterDuration))
 
   /**
    * Create a [[Projection]] with at-most-once processing semantics. It stores the offset in Cassandra
    * before the `handler` has processed the envelope. This means that if the projection is restarted
-   * from previously stored offset one envelope may not have been processed.
+   * from previously stored offset one envelopes may not have been processed.
    */
   def atMostOnce[Offset, Envelope](
       projectionId: ProjectionId,
@@ -59,9 +82,9 @@ object CassandraProjection {
     new CassandraProjectionImpl(
       projectionId,
       sourceProvider,
-      CassandraProjectionImpl.AtMostOnce,
       settingsOpt = None,
-      handler)
+      offsetStrategy = AtMostOnce,
+      handlerStrategy = SingleHandlerStrategy(handler))
 }
 
 trait CassandraProjection[Envelope] extends Projection[Envelope] {

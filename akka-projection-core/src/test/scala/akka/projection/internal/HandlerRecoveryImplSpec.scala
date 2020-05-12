@@ -42,6 +42,7 @@ object HandlerRecoveryImplSpec {
 
 class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpecLike with LogCapturing {
   import HandlerRecoveryImplSpec._
+  import HandlerRecoveryImpl.applyUserRecovery
 
   private val logger = Logging(system.toClassic, getClass)
   private val failOnOffset = 3
@@ -51,7 +52,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "fail" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.fail, failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.failed.futureValue.getClass shouldBe classOf[TestException]
       handler.attempts shouldBe 1
     }
@@ -59,7 +60,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "skip" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.skip, failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.futureValue shouldBe Done
       handler.attempts shouldBe 1
     }
@@ -67,7 +68,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "retryAndFail 1" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.retryAndFail(1, 20.millis), failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.failed.futureValue.getClass shouldBe classOf[TestException]
       handler.attempts shouldBe 2
     }
@@ -75,7 +76,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "retryAndFail 3" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.retryAndFail(3, 20.millis), failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.failed.futureValue.getClass shouldBe classOf[TestException]
       handler.attempts shouldBe 4
     }
@@ -83,7 +84,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "retryAndFail after delay" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.retryAndFail(1, 1.second), failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       // first attempt is immediately
       handler.attempts shouldBe 1
       // retries after delay
@@ -96,7 +97,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "retryAndSkip 1" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.retryAndSkip(1, 20.millis), failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.futureValue shouldBe Done
       handler.attempts shouldBe 2
     }
@@ -104,7 +105,7 @@ class HandlerRecoveryImplSpec extends ScalaTestWithActorTestKit with AnyWordSpec
     "retryAndSkip 3" in {
       val handler = new FailHandler(HandlerRecoveryStrategy.retryAndSkip(3, 20.millis), failOnOffset)
       val result =
-        HandlerRecoveryImpl.applyUserRecovery(handler, env3, failOnOffset, logger, () => handler.process(env3))
+        applyUserRecovery(handler, env3, failOnOffset, failOnOffset, logger, () => handler.process(env3))
       result.futureValue shouldBe Done
       handler.attempts shouldBe 4
     }

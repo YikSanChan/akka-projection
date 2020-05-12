@@ -4,6 +4,7 @@
 
 package akka.projection.cassandra.internal
 
+import scala.collection.immutable
 import java.util.concurrent.CompletionStage
 
 import scala.concurrent.ExecutionContext
@@ -24,7 +25,9 @@ import akka.projection.RunningProjection
 import akka.projection.cassandra.scaladsl
 import akka.projection.cassandra.javadsl
 import akka.projection.internal.HandlerRecoveryImpl
+import akka.projection.scaladsl.GroupedHandler
 import akka.projection.scaladsl.Handler
+import akka.projection.scaladsl.HandlerLifecycle
 import akka.projection.scaladsl.SourceProvider
 import akka.stream.KillSwitches
 import akka.stream.SharedKillSwitch
@@ -36,9 +39,24 @@ import akka.stream.scaladsl.Source
  * INTERNAL API
  */
 @InternalApi private[akka] object CassandraProjectionImpl {
-  sealed trait Strategy
-  case object AtMostOnce extends Strategy
-  final case class AtLeastOnce(afterEnvelopes: Int, orAfterDuration: FiniteDuration) extends Strategy
+  sealed trait OffsetStrategy
+  case object AtMostOnce extends OffsetStrategy
+  final case class AtLeastOnce(afterEnvelopes: Int, orAfterDuration: FiniteDuration) extends OffsetStrategy
+
+  sealed trait HandlerStrategy[Envelope] {
+    def lifecycle: HandlerLifecycle
+  }
+  final case class SingleHandlerStrategy[Envelope](handler: Handler[Envelope]) extends HandlerStrategy[Envelope] {
+    override def lifecycle: HandlerLifecycle = handler
+  }
+  final case class GroupedHandlerStrategy[Envelope](
+      handler: GroupedHandler[Envelope],
+      afterEnvelopes: Int,
+      orAfterDuration: FiniteDuration)
+      extends HandlerStrategy[Envelope] {
+    override def lifecycle: HandlerLifecycle = handler
+  }
+
   import HandlerRecoveryStrategy.Internal._
 
   /**
@@ -73,16 +91,16 @@ import akka.stream.scaladsl.Source
 @InternalApi private[akka] class CassandraProjectionImpl[Offset, Envelope](
     override val projectionId: ProjectionId,
     sourceProvider: SourceProvider[Offset, Envelope],
-    strategy: CassandraProjectionImpl.Strategy,
     settingsOpt: Option[ProjectionSettings],
-    handler: Handler[Envelope])
+    offsetStrategy: CassandraProjectionImpl.OffsetStrategy,
+    handlerStrategy: CassandraProjectionImpl.HandlerStrategy[Envelope])
     extends javadsl.CassandraProjection[Envelope]
     with scaladsl.CassandraProjection[Envelope] {
   import CassandraProjectionImpl._
   import HandlerRecoveryImpl.applyUserRecovery
 
   override def withSettings(settings: ProjectionSettings): CassandraProjectionImpl[Offset, Envelope] = {
-    new CassandraProjectionImpl(projectionId, sourceProvider, strategy, Option(settings), handler)
+    new CassandraProjectionImpl(projectionId, sourceProvider, Option(settings), offsetStrategy, handlerStrategy)
   }
 
   /**
@@ -137,19 +155,45 @@ import akka.stream.scaladsl.Source
 
       val source: Source[(Offset, Envelope), NotUsed] =
         Source
-          .futureSource(handler.tryStart().flatMap(_ => sourceProvider.source(readOffsets)))
+          .futureSource(handlerStrategy.lifecycle.tryStart().flatMap(_ => sourceProvider.source(readOffsets)))
           .via(killSwitch.flow)
           .map(envelope => sourceProvider.extractOffset(envelope) -> envelope)
           .mapMaterializedValue(_ => NotUsed)
 
       val handlerFlow: Flow[(Offset, Envelope), Offset, NotUsed] =
-        Flow[(Offset, Envelope)].mapAsync(parallelism = 1) {
-          case (offset, envelope) =>
-            applyUserRecovery(handler, envelope, offset, logger, () => handler.process(envelope))
-              .map(_ => offset)
+        handlerStrategy match {
+          case grouped: GroupedHandlerStrategy[Envelope] =>
+            Flow[(Offset, Envelope)]
+              .groupedWithin(grouped.afterEnvelopes, grouped.orAfterDuration)
+              .filterNot(_.isEmpty)
+              .mapAsync(parallelism = 1) { group =>
+                val firstOffset = group.head._1
+                val lastOffset = group.last._1
+                val envelopes = group.map(_._2)
+                applyUserRecovery[Offset, immutable.Seq[Envelope]](
+                  grouped.handler,
+                  envelopes,
+                  firstOffset,
+                  lastOffset,
+                  logger,
+                  () => grouped.handler.process(envelopes))
+                  .map(_ => lastOffset)
+              }
+          case single: SingleHandlerStrategy[Envelope] =>
+            Flow[(Offset, Envelope)].mapAsync(parallelism = 1) {
+              case (offset, envelope) =>
+                applyUserRecovery(
+                  single.handler,
+                  envelope,
+                  offset,
+                  offset,
+                  logger,
+                  () => single.handler.process(envelope))
+                  .map(_ => offset)
+            }
         }
 
-      val composedSource: Source[Done, NotUsed] = strategy match {
+      val composedSource: Source[Done, NotUsed] = offsetStrategy match {
         case AtLeastOnce(1, _) =>
           // optimization of general AtLeastOnce case
           source.via(handlerFlow).mapAsync(1) { offset =>
@@ -165,6 +209,12 @@ import akka.stream.scaladsl.Source
             }
         case AtMostOnce =>
           // prevent usage of retries for at-most-once
+          val handler = handlerStrategy match {
+            case SingleHandlerStrategy(handler) => handler
+            case _                              =>
+              // not possible
+              throw new IllegalStateException("Unsupported combination of atMostOnce and grouped")
+          }
           val atMostOnceHandler = new AtMostOnceHandler(handler, logger)
           source
             .mapAsync(parallelism = 1) {
@@ -177,13 +227,14 @@ import akka.stream.scaladsl.Source
                         atMostOnceHandler,
                         envelope,
                         offset,
+                        offset,
                         logger,
                         () => atMostOnceHandler.process(envelope)))
             }
             .map(_ => Done)
       }
 
-      composedSource.via(RunningProjection.stopHandlerWhenFailed(() => handler.tryStop()))
+      composedSource.via(RunningProjection.stopHandlerWhenFailed(() => handlerStrategy.lifecycle.tryStop()))
     }
 
     private[projection] def newRunningInstance(): RunningProjection = {
@@ -197,7 +248,7 @@ import akka.stream.scaladsl.Source
 
     private val streamDone = source.run()
     private val allStopped: Future[Done] =
-      RunningProjection.stopHandlerWhenStreamCompletedNormally(streamDone, () => handler.tryStop())(
+      RunningProjection.stopHandlerWhenStreamCompletedNormally(streamDone, () => handlerStrategy.lifecycle.tryStop())(
         systemProvider.classicSystem.dispatcher)
 
     /**

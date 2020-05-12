@@ -46,6 +46,8 @@ object CassandraProjection {
       saveOffsetAfterDuration.asScala,
       new HandlerAdapter(handler))
 
+  // FIXME grouped
+
   /**
    * Create a [[Projection]] with at-most-once processing semantics. It stores the offset in Cassandra
    * before the `handler` has processed the envelope. This means that if the projection is restarted

@@ -4,6 +4,7 @@
 
 package akka.projection.scaladsl
 
+import scala.collection.immutable
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
@@ -80,4 +81,10 @@ import akka.projection.HandlerRecovery
     }
   }
 
+}
+
+@ApiMayChange trait GroupedHandler[Envelope]
+    extends HandlerRecovery[immutable.Seq[Envelope]]
+    with Handler[immutable.Seq[Envelope]] {
+  override def process(group: immutable.Seq[Envelope]): Future[Done]
 }
