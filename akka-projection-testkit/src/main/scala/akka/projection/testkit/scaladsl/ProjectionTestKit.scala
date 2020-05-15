@@ -15,6 +15,7 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.annotation.ApiMayChange
 import akka.projection.Projection
 import akka.projection.ProjectionSettings
+import akka.stream.KillSwitches
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
 

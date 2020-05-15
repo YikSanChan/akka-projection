@@ -176,7 +176,7 @@ class ProjectionTestKitSpec extends ScalaTestWithActorTestKit with AnyWordSpecLi
     private class TestRunningProjection(val source: Source[Done, _], killSwitch: SharedKillSwitch)
         extends RunningProjection {
 
-      val futureDone = source.run()
+      private val futureDone = source.run()
 
       override def stop()(implicit ec: ExecutionContext): Future[Done] = {
         killSwitch.shutdown()

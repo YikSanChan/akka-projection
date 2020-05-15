@@ -71,7 +71,6 @@ class TestKitDocExample extends ScalaTestWithActorTestKit {
   projectionTestKit.runWithTestSink(projection) { sinkProbe =>
     sinkProbe.request(1)
     sinkProbe.expectNext(Done)
-    sinkProbe.cancel()
   }
 
   // confirm that cart checkout was inserted in db

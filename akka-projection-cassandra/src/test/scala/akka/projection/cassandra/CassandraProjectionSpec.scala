@@ -680,6 +680,41 @@ class CassandraProjectionSpec
       handlerProbe.expectNoMessage() // no duplicate stop
     }
 
+    "call start and stop of the handler when using TestKit.runWithTestSink" in {
+      val entityId = UUID.randomUUID().toString
+      val projectionId = genRandomProjectionId()
+
+      val handlerProbe = createTestProbe[String]()
+      val handler = new LifecycleHandler(handlerProbe.ref, failOnceOnOffset = -1)
+
+      val projection =
+        CassandraProjection
+          .atLeastOnce[Long, Envelope](
+            projectionId,
+            sourceProvider(system, entityId),
+            saveOffsetAfterEnvelopes = 1,
+            saveOffsetAfterDuration = Duration.Zero,
+            handler)
+
+      // not using ProjectionTestKit because want to test restarts
+      projectionTestKit.runWithTestSink(projection) { sinkProbe =>
+
+        sinkProbe.request(6)
+        sinkProbe.expectNextN(6)
+
+        handlerProbe.expectMessage("start")
+        handlerProbe.expectMessage("abc")
+        handlerProbe.expectMessage("def")
+        handlerProbe.expectMessage("ghi")
+        handlerProbe.expectMessage("jkl")
+        handlerProbe.expectMessage("mno")
+        handlerProbe.expectMessage("pqr")
+        // completed without failure
+        handlerProbe.expectMessage("stop")
+        handlerProbe.expectNoMessage() // no duplicate stop
+      }
+    }
+
     "call start and stop of handler when restarted" in {
       val entityId = UUID.randomUUID().toString
       val projectionId = genRandomProjectionId()

@@ -114,7 +114,6 @@ public class TestKitDocExample {
 
       sinkProbe.request(1);
       sinkProbe.expectNext(Done.getInstance());
-      sinkProbe.cancel();
 
       CartView cartView =
         cartCheckoutRepository
