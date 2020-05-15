@@ -247,9 +247,10 @@ class CassandraProjectionSpec
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(failingProjection)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(failingProjection) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = repository.findById(entityId).futureValue.get
@@ -302,9 +303,10 @@ class CassandraProjectionSpec
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(failingProjection)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(failingProjection) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = repository.findById(entityId).futureValue.get
@@ -358,29 +360,28 @@ class CassandraProjectionSpec
           saveOffsetAfterDuration = 1.minute,
           concatHandler())
 
-      val sinkProbe = projectionTestKit.runWithTestSink(projection)
-      eventually {
-        sourceProbe.get should not be null
-      }
-      sinkProbe.request(1000)
+      projectionTestKit.runWithTestSink(projection) { sinkProbe =>
+        eventually {
+          sourceProbe.get should not be null
+        }
+        sinkProbe.request(1000)
 
-      (1 to 15).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        repository.findById(entityId).futureValue.get.text should include("elem-15")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 10L
+        (1 to 15).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          repository.findById(entityId).futureValue.get.text should include("elem-15")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 10L
 
-      (16 to 22).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        (16 to 22).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          repository.findById(entityId).futureValue.get.text should include("elem-22")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 20L
       }
-      eventually {
-        repository.findById(entityId).futureValue.get.text should include("elem-22")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 20L
-
-      sinkProbe.cancel()
     }
 
     "save offset after idle duration" in {
@@ -402,29 +403,30 @@ class CassandraProjectionSpec
           saveOffsetAfterDuration = 2.seconds,
           concatHandler())
 
-      val sinkProbe = projectionTestKit.runWithTestSink(projection)
-      eventually {
-        sourceProbe.get should not be null
-      }
-      sinkProbe.request(1000)
+      projectionTestKit.runWithTestSink(projection) { sinkProbe =>
 
-      (1 to 15).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        repository.findById(entityId).futureValue.get.text should include("elem-15")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 10L
+        eventually {
+          sourceProbe.get should not be null
+        }
+        sinkProbe.request(1000)
 
-      (16 to 17).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 17L
-      }
-      repository.findById(entityId).futureValue.get.text should include("elem-17")
+        (1 to 15).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          repository.findById(entityId).futureValue.get.text should include("elem-15")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 10L
 
-      sinkProbe.cancel()
+        (16 to 17).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          offsetStore.readOffset[Long](projectionId).futureValue.get shouldBe 17L
+        }
+        repository.findById(entityId).futureValue.get.text should include("elem-17")
+
+      }
     }
 
     "skip failing events when using RecoveryStrategy.skip" in {
@@ -560,9 +562,10 @@ class CassandraProjectionSpec
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(failingProjection)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(failingProjection) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = repository.findById(entityId).futureValue.get

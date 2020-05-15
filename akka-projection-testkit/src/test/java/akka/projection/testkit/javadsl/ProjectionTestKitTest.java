@@ -52,7 +52,10 @@ public class ProjectionTestKitTest extends JUnitSuite {
         StringBuffer strBuffer = new StringBuffer("");
         TestProjection prj = new TestProjection(src, strBuffer, i -> i <= 6);
 
-        projectionTestKit.run(prj, () -> assertEquals(strBuffer.toString(), "1-2-3-4-5-6"));
+        projectionTestKit.run(prj, () -> {
+            assertEquals(strBuffer.toString(), "1-2-3-4-5-6");
+            return Done.getInstance();
+        });
     }
 
     @Test
@@ -68,6 +71,7 @@ public class ProjectionTestKitTest extends JUnitSuite {
 
         projectionTestKit.run(prj, Duration.ofSeconds(2), () -> {
             assertEquals(strBuffer.toString(), "1-2-3-4-5-6");
+            return Done.getInstance();
         });
     }
 
@@ -84,6 +88,7 @@ public class ProjectionTestKitTest extends JUnitSuite {
         try {
             projectionTestKit.run(prj, Duration.ofSeconds(1), () -> {
                 assertEquals(strBuffer.toString(), "1-2");
+                return Done.getInstance();
             });
             Assert.fail("should not reach that line");
         } catch (ComparisonFailure failure) {
@@ -103,7 +108,10 @@ public class ProjectionTestKitTest extends JUnitSuite {
         });
 
         try {
-            projectionTestKit.run(prj, () -> assertEquals(strBuffer.toString(), "1-2-3-4"));
+            projectionTestKit.run(prj, () -> {
+                assertEquals(strBuffer.toString(), "1-2-3-4");
+                return Done.getInstance();
+            });
             Assert.fail("should not reach that line");
         } catch (RuntimeException ex) {
             assertEquals(ex.getMessage(), streamFailureMsg);
@@ -123,7 +131,10 @@ public class ProjectionTestKitTest extends JUnitSuite {
         TestProjection prj = new TestProjection(failingSource, strBuffer, i ->  i <= 4);
 
         try {
-            projectionTestKit.run(prj, () -> assertEquals(strBuffer.toString(), "1-2-3-4"));
+            projectionTestKit.run(prj, () -> {
+                assertEquals(strBuffer.toString(), "1-2-3-4");
+                return Done.getInstance();
+            });
             Assert.fail("should not reach that line");
         } catch (RuntimeException ex) {
             assertEquals(ex.getMessage(), streamFailureMsg);
@@ -138,11 +149,13 @@ public class ProjectionTestKitTest extends JUnitSuite {
                 .boxed().collect(Collectors.toList());
 
         TestProjection prj = new TestProjection(Source.from(elements), strBuffer, i -> i <= 5);
-        TestSubscriber.Probe<Done> sinkProbe = projectionTestKit.runWithTestSink(prj);
 
-        sinkProbe.request(5);
-        sinkProbe.expectNextN(5);
-        sinkProbe.expectComplete();
+        projectionTestKit.runWithTestSink(prj, sinkProbe -> {
+            sinkProbe.request(5);
+            sinkProbe.expectNextN(5);
+            sinkProbe.expectComplete();
+            return Done.getInstance();
+        });
 
         assertEquals(strBuffer.toString(), "1-2-3-4-5");
 

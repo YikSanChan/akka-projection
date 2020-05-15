@@ -122,11 +122,11 @@ class ProjectionTestKitSpec extends ScalaTestWithActorTestKit with AnyWordSpecLi
       val strBuffer = new StringBuffer("")
       val projection = TestProjection(Source(1 to 5), strBuffer, _ <= 5)
 
-      val sinkProbe = projectionTestKit.runWithTestSink(projection)
-
-      sinkProbe.request(5)
-      sinkProbe.expectNextN(5)
-      sinkProbe.expectComplete()
+      projectionTestKit.runWithTestSink(projection) { sinkProbe =>
+        sinkProbe.request(5)
+        sinkProbe.expectNextN(5)
+        sinkProbe.expectComplete()
+      }
 
       strBuffer.toString shouldBe "1-2-3-4-5"
     }

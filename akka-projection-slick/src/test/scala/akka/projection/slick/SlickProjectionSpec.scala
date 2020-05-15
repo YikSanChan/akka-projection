@@ -298,9 +298,10 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -337,9 +338,10 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -393,9 +395,10 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -452,9 +455,11 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
         offsetOpt shouldBe empty
       }
 
-      val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-      sinkProbe.request(1000)
-      eventuallyExpectError(sinkProbe).getClass shouldBe classOf[JdbcSQLIntegrityConstraintViolationException]
+      projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+
+        sinkProbe.request(1000)
+        eventuallyExpectError(sinkProbe).getClass shouldBe classOf[JdbcSQLIntegrityConstraintViolationException]
+      }
 
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -609,9 +614,10 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -670,9 +676,10 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
       }
 
       withClue("check: projection failed with stream failure") {
-        val sinkProbe = projectionTestKit.runWithTestSink(slickProjectionFailing)
-        sinkProbe.request(1000)
-        eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        projectionTestKit.runWithTestSink(slickProjectionFailing) { sinkProbe =>
+          sinkProbe.request(1000)
+          eventuallyExpectError(sinkProbe).getMessage should startWith(concatHandlerFail4Msg)
+        }
       }
       withClue("check: projection is consumed up to third") {
         val concatStr = dbConfig.db.run(repository.findById(entityId)).futureValue.value
@@ -736,29 +743,30 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
           saveOffsetAfterDuration = 1.minute,
           eventHandler)
 
-      val sinkProbe = projectionTestKit.runWithTestSink(slickProjection)
-      eventually {
-        sourceProbe.get should not be null
-      }
-      sinkProbe.request(1000)
+      projectionTestKit.runWithTestSink(slickProjection) { sinkProbe =>
 
-      (1 to 15).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-15")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 10L
+        eventually {
+          sourceProbe.get should not be null
+        }
+        sinkProbe.request(1000)
 
-      (16 to 22).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-22")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 20L
+        (1 to 15).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-15")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 10L
 
-      sinkProbe.cancel()
+        (16 to 22).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-22")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 20L
+      }
+
     }
 
     "save offset after idle duration" in {
@@ -785,29 +793,30 @@ class SlickProjectionSpec extends SlickSpec(SlickProjectionSpec.config) with Any
           saveOffsetAfterDuration = 2.seconds,
           eventHandler)
 
-      val sinkProbe = projectionTestKit.runWithTestSink(slickProjection)
-      eventually {
-        sourceProbe.get should not be null
-      }
-      sinkProbe.request(1000)
+      projectionTestKit.runWithTestSink(slickProjection) { sinkProbe =>
 
-      (1 to 15).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-15")
-      }
-      offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 10L
+        eventually {
+          sourceProbe.get should not be null
+        }
+        sinkProbe.request(1000)
 
-      (16 to 17).foreach { n =>
-        sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
-      }
-      eventually {
-        offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 17L
-      }
-      dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-17")
+        (1 to 15).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-15")
+        }
+        offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 10L
 
-      sinkProbe.cancel()
+        (16 to 17).foreach { n =>
+          sourceProbe.get.sendNext(Envelope(entityId, n, s"elem-$n"))
+        }
+        eventually {
+          offsetStore.readOffset[Long](projectionId).futureValue.value shouldBe 17L
+        }
+        dbConfig.db.run(repository.findById(entityId)).futureValue.value.text should include("elem-17")
+      }
+
     }
 
   }
